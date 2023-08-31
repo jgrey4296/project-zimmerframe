@@ -7,6 +7,7 @@
 (defvar zimmerframe-root-text "# Root: ")
 
 (defun zimmerframe-init ()
+  "Initialize a walker in the project root"
   (interactive)
   (let* ((current (projectile-project-root))
          (files (projectile-project-files current)))
@@ -22,6 +23,7 @@
   )
 
 (defun zimmerframe-directory-init ()
+  "Init a walker in a specific directory"
   (interactive)
   (let* ((current (read-directory-name "Starting Point: "))
          (files (projectile-project-files current)))
@@ -36,6 +38,7 @@
   )
 
 (defun zimmerframe-filter-defaults ()
+  "User defaults to filter the walker"
   (interactive)
   (with-current-buffer zimmerframe-buffer
     (goto-char (point-min))
@@ -43,11 +46,13 @@
     (flush-lines zimmerframe-filter-default-regexp)
     (goto-char (point-min))
     (forward-line 1)
-    (flush-lines zimmerframe-filter-default-exclusions)
+    (flush-lines (string-join zimmerframe-filter-default-exclusions "\\"))
     )
+  (zimmerframe-remaining-count)
 )
 
 (defun zimmerframe-filter-keep (arg)
+  "Keep only files matching a regex in the walker"
   (interactive "MKeep filenames: ")
   (with-current-buffer zimmerframe-buffer
     (goto-char (point-min))
@@ -57,6 +62,7 @@
   )
 
 (defun zimmerframe-filter (arg)
+  "Filter a regex from the walker"
   (interactive "MRegexp to filter: ")
   (with-current-buffer zimmerframe-buffer
     (goto-char (point-min))
@@ -66,6 +72,7 @@
 )
 
 (defun zimmerframe--root ()
+  "Get the root of the walker"
   (with-current-buffer zimmerframe-buffer
     (goto-char (point-max))
     (when (re-search-backward zimmerframe-root-text nil t)
@@ -73,9 +80,11 @@
                         (line-end-position)))))
 
 (defun zimmerframe--find (file)
+  "Find a file in the walker"
   (let ((root (zimmerframe--root)))
-    (cond ((and (s-matches? "^/" file)
-                (f-exists? file))
+    (cond ((f-dir? file)
+           (message "Entering Directory: %s" file))
+          ((and (s-matches? "^/" file) (f-exists? file))
            (find-file file))
           ((and root (f-exists? (f-join root file)))
            (find-file (f-join root file)))
@@ -98,8 +107,7 @@ or by the last visited file (signified by (rx bol *))
                  (forward-line 1)
                (goto-char (point-min)))
              (insert "* ")
-             (cond ((looking-at "/")
-                    (find-file (buffer-substring (point) (line-end-position))))
+             (cond ((looking-at "^*") nil)
                    (t (zimmerframe--find (buffer-substring (point) (line-end-position))))
                    ))
            )
@@ -107,6 +115,7 @@ or by the last visited file (signified by (rx bol *))
   )
 
 (defun zimmerframe-prev ()
+  "Get the Previous file in the walker"
   (interactive)
   (cond ((null (get-buffer zimmerframe-buffer))
          (message "Project Walk Not Started"))
@@ -115,7 +124,7 @@ or by the last visited file (signified by (rx bol *))
              (when (re-search-backward "^* " nil t)
                (delete-region (point) (+ (point) 2))
                )
-             (cond ((looking-at "/") (find-file (buffer-substring (point) (line-end-position))))
+             (cond ((looking-at "^*") nil)
                    (t (zimmerframe--find (buffer-substring (point) (line-end-position))))
              )))
         )
@@ -139,6 +148,18 @@ or by the last visited file (signified by (rx bol *))
          (display-buffer zimmerframe-buffer))
         )
   )
+
+(defun zimmerframe-remaining-count ()
+  (cond ((null (get-buffer zimmerframe-buffer))
+         -1)
+        (t
+         (with-current-buffer zimmerframe-buffer
+           (goto-char (point-max))
+           (if (re-search-backward "^* " nil t)
+               (forward-line 1)
+             (goto-char (point-min)))
+           (count-lines (point) (point-max))))
+        ))
 
 (defun zimmerframe-num ()
   (interactive)
@@ -173,7 +194,7 @@ or by the last visited file (signified by (rx bol *))
   (setq-default zimmerframe-filter-default-exclusions '("__init__.py")
                 zimmerframe-filter-default-regexp (rx line-start ?.)
                 )
-  (cond (zimmerframe-minor-mode
+  (cond (project-zimmerframe-minor-mode
          (zimmerframe-init))
         ((get-buffer zimmerframe-buffer)
          (kill-some-buffers (list (get-buffer zimmerframe-buffer))))
