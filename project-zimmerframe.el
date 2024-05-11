@@ -1,6 +1,7 @@
 ;;; -*- lexical-binding: t; -*-
 
 ;; A Simple minor mode to walk through every file in a project
+(require 'fileloop)
 
 (defvar zimmerframe-buffer "*Project Zimmerframe*")
 
@@ -19,6 +20,7 @@
       (goto-char (point-min))
       (forward-line 1)
       )
+    (message "Initialized Zimmerframe with root: %s" current)
     )
   )
 
@@ -139,6 +141,7 @@ or by the last visited file (signified by (rx bol *))
            (re-search-backward "^\\(*\\|#\\) ")
            (forward-line)
            (not (< (point) (point-max))))
+         (display-buffer zimmerframe-buffer)
          (message "Project Walk Completed"))
         ;; ((intern-soft "+popup-buffer")
         ;;  (message "Popping")
@@ -184,6 +187,72 @@ or by the last visited file (signified by (rx bol *))
            )
          )
         )
+  )
+
+(defun zimmerframe--replace-scan (mstart from)
+  " The scan function for fileloop "
+  (when (re-search-forward from nil t)
+    ;; When we find a match, save its beginning for
+    ;; `perform-replace' (we used to just set point, but this
+    ;; is unreliable in the face of
+    ;; `switch-to-buffer-preserve-window-point').
+    (puthash (current-buffer) (match-beginning 0) mstart)
+    )
+)
+
+(defun zimmerframe--replace-operate (mstart from to)
+  " the operate function for fileloop"
+  (vimish-fold-unfold-all)
+  (perform-replace from to t t nil nil multi-query-replace-map
+                   (gethash (current-buffer) mstart (point-min))
+                   (point-max))
+  )
+
+(iter-defun zimmerframe--iter-next ()
+  "An iterator that returns the next buffer to walk to"
+  (interactive)
+  (let ((root (zimmerframe--root))
+        (z-point 0)
+        (z-max (with-current-buffer zimmerframe-buffer
+                 (goto-char (point-min))
+                 (point-max)))
+        current
+        )
+    (while (< z-point z-max)
+      (with-current-buffer zimmerframe-buffer
+        (while (and (not (eobp)) (looking-at "^\\(#\\|\*\\)" t))
+          (forward-line 1)
+          )
+        (setq current (f-join root (buffer-substring (point) (line-end-position))))
+        (insert "* ")
+        (forward-line 1)
+        (setq z-point (point))
+        )
+      (when (and (f-file? current) (f-exists? current))
+        (iter-yield current)
+        )
+      )
+    )
+  )
+
+(defun zimmerframe-replace-regexp ()
+  "Use zimmerframe to walk the project and replace a regexp"
+  (interactive)
+  (unless (get-buffer zimmerframe-buffer)
+    (zimmerframe-init)
+    )
+  (let* ((regexp (read-string "Replace Regexp: "))
+         (target (read-string (format "Replace %s with: " regexp)))
+         (mstart (make-hash-table :test 'eq))
+         (case-fold-search nil)
+         )
+    (fileloop-initialize
+     (funcall #'zimmerframe--iter-next)
+     (-partial #'zimmerframe--replace-scan mstart regexp)
+     (-partial #'zimmerframe--replace-operate mstart regexp target)
+     )
+    (fileloop-continue)
+    )
   )
 
 ;;;###autoload
