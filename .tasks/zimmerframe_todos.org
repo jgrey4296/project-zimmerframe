@@ -1,8 +1,9 @@
 #+title: Project Zimmerframe Todos
+#+STARTUP: agenda
 
 * project-zimmerframe
 :PROPERTIES:
 :ID:       05d46606-190e-42a1-ad2f-60b5113f8423
 :END:
-** add structs
-** test
+** [∅] add structs
+** [∅] test
